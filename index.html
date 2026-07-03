@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏰 Pathos 在线 — 多人回合制 Roguelike</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Segoe UI','Microsoft YaHei','PingFang SC',sans-serif;
+  background:#0a0a12; color:#c8c8d0; overflow:hidden;
+  height:100vh; width:100vw;
+}
+
+/* ═══════ 登录 ═══════ */
+#login-overlay{
+  position:fixed; inset:0; z-index:100;
+  background:radial-gradient(ellipse at center,#1a1a2e 0%,#0a0a12 70%);
+  display:flex; align-items:center; justify-content:center;
+}
+.login-box{
+  text-align:center; padding:44px 38px;
+  background:rgba(20,20,40,0.96); border:1px solid #333; border-radius:14px;
+  box-shadow:0 0 80px rgba(100,100,255,0.15); max-width:450px; width:92%;
+}
+.login-box h1{ font-size:2.3em; margin-bottom:2px; letter-spacing:3px; background:linear-gradient(135deg,#FFD700,#FFA500); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.login-box .sub{ color:#777; font-size:0.88em; margin-bottom:26px; }
+.login-box input{
+  display:block; width:100%; padding:13px 16px; margin-bottom:12px;
+  background:#1a1a2e; color:#eee; border:1px solid #444; border-radius:8px;
+  font-size:1em; outline:none; transition:border-color .2s;
+}
+.login-box input:focus{ border-color:#FFD700; }
+.login-box button{
+  width:100%; padding:15px; margin-top:6px;
+  background:linear-gradient(135deg,#FFD700,#FF8C00);
+  color:#1a1a2e; border:none; border-radius:8px; font-size:1.15em;
+  font-weight:bold; cursor:pointer; letter-spacing:2px;
+  transition:transform .1s,box-shadow .2s;
+}
+.login-box button:hover{ transform:scale(1.02); box-shadow:0 0 24px rgba(255,215,0,0.45); }
+.login-box button:active{ transform:scale(0.98); }
+.class-cards{ display:flex; gap:10px; margin-bottom:16px; }
+.class-card{
+  flex:1; padding:14px 8px; border-radius:10px; cursor:pointer;
+  border:2px solid transparent; text-align:center; transition:all .2s;
+  background:rgba(255,255,255,0.03); font-size:0.85em;
+}
+.class-card:hover{ background:rgba(255,255,255,0.07); }
+.class-card.selected{ border-color:#FFD700; background:rgba(255,215,0,0.12); }
+.class-card .icon{ font-size:2.2em; display:block; margin-bottom:4px; }
+.class-card .cn{ font-weight:bold; color:#eee; }
+.class-card .cd{ font-size:0.72em; color:#888; margin-top:3px; }
+
+/* ═══════ 游戏布局 ═══════ */
+#game{ display:none; height:100vh; width:100vw; }
+#game-area{ flex:1; position:relative; min-width:0; background:#000; }
+#game-area canvas{ display:block; width:100%; height:100%; }
+
+#sidebar{
+  width:300px; background:#111122; border-left:1px solid #2a2a3a;
+  display:flex; flex-direction:column; overflow-y:auto; font-size:0.84em;
+  padding:0; flex-shrink:0;
+}
+#game-layout{ display:flex; height:100%; }
+
+/* ─── 侧栏 ─── */
+.side-section{ padding:10px 14px; border-bottom:1px solid #1a1a2e; }
+.side-section h3{ color:#FFD700; font-size:0.88em; margin-bottom:6px; letter-spacing:1px; }
+.stat-row{ display:flex; justify-content:space-between; padding:2px 0; }
+.stat-row .lbl{ color:#888; }
+.stat-row .val{ color:#eee; font-weight:bold; }
+.hp-bar-bg{ background:#333; height:10px; border-radius:5px; margin:6px 0; overflow:hidden; }
+.hp-bar-fg{ background:linear-gradient(90deg,#FF3333,#FF6666); height:100%; border-radius:5px; transition:width .3s; }
+.xp-bar-bg{ background:#333; height:6px; border-radius:3px; margin:4px 0; overflow:hidden; }
+.xp-bar-fg{ background:linear-gradient(90deg,#4488FF,#66AAFF); height:100%; border-radius:3px; transition:width .3s; }
+
+.eq-slot{ display:flex; justify-content:space-between; padding:2px 0; font-size:0.82em; }
+.eq-slot .slot{ color:#888; }
+.eq-slot .eq-item{ color:#FFD700; }
+
+.inv-item{
+  padding:4px 8px; cursor:pointer; border-radius:4px; display:flex;
+  justify-content:space-between; align-items:center; transition:background .15s; font-size:0.85em;
+}
+.inv-item:hover{ background:rgba(255,255,255,0.05); }
+.inv-item .hotkey{ color:#FFD700; margin-right:8px; font-weight:bold; min-width:22px; }
+.inv-item .iname{ flex:1; }
+.inv-item .iactions{ display:flex; gap:4px; }
+.inv-item .iactions button{
+  background:#2a2a3a; color:#aaa; border:1px solid #444; border-radius:4px;
+  padding:2px 8px; font-size:0.75em; cursor:pointer; transition:all .15s;
+}
+.inv-item .iactions button:hover{ background:#555; color:#fff; }
+
+.pl-row{ padding:3px 0; display:flex; align-items:center; gap:6px; font-size:0.84em; }
+.pl-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.pl-name{ flex:1; color:#ddd; }
+.pl-info{ color:#888; font-size:0.8em; }
+
+#log-area{ flex:1; overflow-y:auto; padding:10px 14px; min-height:140px; max-height:220px; }
+.log-msg{ padding:2px 0; font-size:0.8em; word-break:break-word; line-height:1.5; }
+.log-msg .time{ color:#444; margin-right:6px; font-size:0.9em; }
+.chat-msg .author{ font-weight:bold; margin-right:4px; }
+#chat-form{ display:flex; padding:8px 14px; gap:6px; border-top:1px solid #1a1a2e; }
+#chat-input{
+  flex:1; padding:9px 12px; background:#1a1a2e; color:#eee;
+  border:1px solid #444; border-radius:6px; font-size:0.88em; outline:none;
+}
+#chat-input:focus{ border-color:#FFD700; }
+#chat-send{ padding:9px 16px; background:#2a2a3a; color:#FFD700; border:1px solid #444; border-radius:6px; cursor:pointer; }
+#chat-send:hover{ background:#3a3a4a; }
+
+#death-overlay{
+  position:fixed; inset:0; z-index:50; pointer-events:none;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; transition:opacity .3s;
+}
+#death-overlay.show{ opacity:1; }
+#death-overlay .msg{
+  font-size:3.5em; color:#FF0000; font-weight:bold; letter-spacing:4px;
+  text-shadow:0 0 40px rgba(255,0,0,0.7);
+  animation:pulse 0.7s ease-in-out;
+}
+@keyframes pulse{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+
+#help-bar{
+  position:fixed; bottom:10px; left:50%; transform:translateX(-50%);
+  background:rgba(5,5,15,0.93); padding:8px 22px; border-radius:8px;
+  font-size:0.82em; color:#bbb; letter-spacing:0.5px; z-index:10;
+  border:1px solid #444; white-space:nowrap; pointer-events:none;
+}
+#help-bar span{ color:#FFD700; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<!-- ═══════ 登录 ═══════ -->
+<div id="login-overlay">
+<div class="login-box">
+  <h1>🏰 Pathos 在线</h1>
+  <p class="sub">多人回合制 Roguelike · 九宫格地牢 · 万物皆可吃</p>
+  <input id="name-input" placeholder="输入你的名字……" maxlength="12" autofocus>
+  <div class="class-cards" id="class-cards">
+    <div class="class-card selected" data-class="warrior">
+      <span class="icon">⚔️</span><span class="cn">战士</span>
+      <span class="cd">HP:38 力量:16</span>
+    </div>
+    <div class="class-card" data-class="wizard">
+      <span class="icon">🧙</span><span class="cn">法师</span>
+      <span class="cd">HP:22 魔法</span>
+    </div>
+    <div class="class-card" data-class="rogue">
+      <span class="icon">🗡️</span><span class="cn">盗贼</span>
+      <span class="cd">HP:26 暴击</span>
+    </div>
+  </div>
+  <button id="join-btn">⚡ 进入地牢</button>
+</div>
+</div>
+
+<!-- ═══════ 游戏 ═══════ -->
+<div id="game">
+<div id="game-layout">
+  <div id="game-area"><canvas id="canvas"></canvas></div>
+  <div id="sidebar">
+    <div class="side-section">
+      <h3>🧑 角色信息</h3>
+      <div class="stat-row"><span class="lbl">名字</span><span class="val" id="st-name">—</span></div>
+      <div class="stat-row"><span class="lbl">职业</span><span class="val" id="st-class">—</span></div>
+      <div class="hp-bar-bg"><div class="hp-bar-fg" id="hp-bar" style="width:100%"></div></div>
+      <div class="stat-row"><span class="lbl">生命</span><span class="val" id="st-hp">—</span></div>
+      <div class="xp-bar-bg"><div class="xp-bar-fg" id="xp-bar" style="width:0%"></div></div>
+      <div class="stat-row"><span class="lbl">等级 / 经验</span><span class="val" id="st-lvlxp">1</span></div>
+      <div class="stat-row"><span class="lbl">力量 / 敏捷</span><span class="val" id="st-strdex">—</span></div>
+      <div class="stat-row"><span class="lbl">金币</span><span class="val" id="st-gold">0</span></div>
+      <div class="stat-row"><span class="lbl">深度 / 击杀</span><span class="val" id="st-depth">第1层</span></div>
+    </div>
+
+    <div class="side-section">
+      <h3>⚔️ 装备</h3>
+      <div class="eq-slot"><span class="slot">武器</span><span class="eq-item" id="eq-wpn">空手</span></div>
+      <div class="eq-slot"><span class="slot">护甲</span><span class="eq-item" id="eq-arm">无</span></div>
+      <div class="eq-slot"><span class="slot">戒指</span><span class="eq-item" id="eq-ring">无</span></div>
+    </div>
+
+    <div class="side-section">
+      <h3>🎒 背包 <span style="color:#888;font-weight:normal">[I]</span></h3>
+      <div id="inv-list"><span style="color:#555">按 I 键打开背包</span></div>
+    </div>
+
+    <div class="side-section">
+      <h3>👥 在线玩家 <span id="pl-count" style="color:#888;font-weight:normal">(0)</span></h3>
+      <div id="pl-list"></div>
+    </div>
+
+    <div id="log-area"></div>
+
+    <form id="chat-form" onsubmit="return sendChat()">
+      <input id="chat-input" placeholder="聊天…… (Enter)" maxlength="150">
+      <button type="submit" id="chat-send">发送</button>
+    </form>
+  </div>
+</div>
+</div>
+
+<div id="death-overlay"><div class="msg">💀 你死了</div></div>
+<div id="help-bar">
+  <span>方向键/WASD</span> 移动 ·
+  <span>G</span> 拾取 ·
+  <span>E</span> 吃 ·
+  <span>I</span> 背包 ·
+  <span>&gt;</span> 下楼 ·
+  <span>&lt;</span> 上楼
+</div>
+
+<!-- ═══════ 脚本 ═══════ -->
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ═══════ 常量 ═══════
+const TILE = { WALL:0, FLOOR:1, STAIRS_UP:2, STAIRS_DOWN:3, DOOR:4 };
+const TS = 36; // 格子尺寸
+
+// ═══════ DOM ═══════
+const $ = id => document.getElementById(id);
+const loginOverlay = $('login-overlay');
+const gameDiv = $('game');
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+const deathOverlay = $('death-overlay');
+const chatInput = $('chat-input');
+
+// ═══════ 状态 ═══════
+let socket, myId, myData, currentLevel = 1;
+let map = null, mapW = 60, mapH = 40;
+let gameState = null;
+let cameraX = 0, cameraY = 0, targetCX = 0, targetCY = 0;
+let damageFlash = 0;
+let logMessages = [], MAX_LOG = 100;
+let selectedClass = 'warrior';
+let showInv = false;
+let seenTiles = new Set(); // 已探索坐标
+
+// ═══════ 登录 ═══════
+document.querySelectorAll('.class-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.class-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedClass = card.dataset.class;
+  });
+});
+
+$('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') joinGame(); });
+$('join-btn').addEventListener('click', joinGame);
+
+function joinGame() {
+  const name = $('name-input').value.trim() || '冒险者';
+  loginOverlay.style.display = 'none';
+  gameDiv.style.display = 'block';
+  requestAnimationFrame(() => { initCanvas(); connectSocket(name, selectedClass); });
+}
+
+function initCanvas() {
+  const area = $('game-area');
+  canvas.width = area.clientWidth || 1100;
+  canvas.height = area.clientHeight || 700;
+  if (canvas.width < 300) { canvas.width = 1100; canvas.height = 700; }
+  window.addEventListener('resize', () => {
+    const a = $('game-area');
+    canvas.width = a.clientWidth || 1100;
+    canvas.height = a.clientHeight || 700;
+  });
+}
+
+// ═══════ 网络 ═══════
+function connectSocket(name, cls) {
+  socket = io();
+  myData = null; gameState = null; seenTiles = new Set();
+
+  socket.on('connect', () => {
+    socket.emit('join', { name, class: cls });
+    addLog('🔗 正在连接到地牢服务器……', '#0f0');
+  });
+
+  socket.on('welcome', data => {
+    myId = data.you.id;
+    myData = data.you;
+    currentLevel = data.level;
+    map = data.map;
+    mapW = map[0].length; mapH = map.length;
+    gameState = { players:[], monsters:[], items:[], level:data.level };
+    // 解析已探索坐标
+    seenTiles = new Set(data.you.seenTiles || []);
+    updateAllUI();
+    addLog(`🎉 欢迎，${data.you.name}！地牢第 ${data.level} 层。`, '#FFD700');
+    addLog('💡 走向怪物攻击 | G拾取 | E吃 | I背包 | >下楼', '#aaa');
+  });
+
+  socket.on('newLevel', data => {
+    map = data.map;
+    currentLevel = data.level;
+    mapW = map[0].length; mapH = map.length;
+    seenTiles = new Set(data.seenTiles || []);
+    addLog(`🏰 进入第 ${data.level} 层……`, '#FFD700');
+  });
+
+  socket.on('gameState', state => {
+    gameState = state;
+    const me = state.players.find(p => p.id === myId);
+    if (me) {
+      myData.hp=me.hp; myData.maxHp=me.maxHp;
+      myData.lvl=me.lvl; myData.str=me.str; myData.dex=me.dex;
+      myData.gold=me.gold; myData.x=me.x; myData.y=me.y;
+      myData.alive=me.alive; myData.depth=me.depth; myData.kills=me.kills;
+    }
+    currentLevel = state.level;
+    updateAllUI();
+  });
+
+  socket.on('syncPlayer', data => {
+    myData = data;
+    if (data.seenTiles) seenTiles = new Set(data.seenTiles);
+    updateAllUI();
+  });
+
+  socket.on('log', data => {
+    if (data.global && data.msg) addLog(data.msg, '#aaa');
+    else if (!data.global && data.msg) addLog(data.msg, '#ddd');
+  });
+
+  socket.on('chat', data => {
+    addLog(`<span class="chat-msg"><span class="author" style="color:${data.color}">${data.from}:</span> ${esc(data.msg)}</span>`, null);
+  });
+
+  socket.on('disconnect', () => addLog('⚠️ 连接断开，请刷新页面。', '#f44'));
+}
+
+// ═══════ 键盘 ═══════
+const keyMap = {
+  ArrowUp:{dx:0,dy:-1}, ArrowDown:{dx:0,dy:1}, ArrowLeft:{dx:-1,dy:0}, ArrowRight:{dx:1,dy:0},
+  w:{dx:0,dy:-1}, s:{dx:0,dy:1}, a:{dx:-1,dy:0}, d:{dx:1,dy:0},
+  k:{dx:0,dy:-1}, j:{dx:0,dy:1}, h:{dx:-1,dy:0}, l:{dx:1,dy:0},
+};
+
+document.addEventListener('keydown', e => {
+  if (!socket || !myData) return;
+  if (document.activeElement === chatInput) { if (e.key === 'Escape') chatInput.blur(); return; }
+
+  const k = e.key;
+  const move = keyMap[k];
+  if (move) { e.preventDefault(); socket.emit('move', move); return; }
+
+  switch (k) {
+    case 'g': case 'G': case ',': e.preventDefault(); socket.emit('pickup'); break;
+    case 'e': case 'E': e.preventDefault(); socket.emit('eat', {}); break;
+    case 'i': case 'I': e.preventDefault(); toggleInventory(); break;
+    case '>': case '.': e.preventDefault(); socket.emit('descend'); break;
+    case '<': e.preventDefault(); socket.emit('ascend'); break;
+    case 'Enter': e.preventDefault(); chatInput.focus(); break;
+    case 'Escape': e.preventDefault(); hideInventory(); break;
+  }
+});
+
+// ═══════ 背包 ═══════
+function toggleInventory(){ showInv=!showInv; updateInventoryUI(); }
+function hideInventory(){ showInv=false; updateInventoryUI(); }
+
+function updateInventoryUI(){
+  const div = $('inv-list');
+  if(!myData||!showInv){ div.innerHTML='<span style="color:#555">按 I 键打开背包</span>'; return; }
+  let html='', idx=0;
+  if(myData.weapon){ html+=invRow(idx,myData.weapon,'⚔','weapon'); idx++; }
+  if(myData.armor){ html+=invRow(idx,myData.armor,'🛡','armor'); idx++; }
+  if(myData.ring){ html+=invRow(idx,myData.ring,'💍','ring'); idx++; }
+  if(myData.inv&&myData.inv.length) for(const it of myData.inv){ html+=invRow(idx,it,hotkey(idx),null); idx++; }
+  if(!html) html='<span style="color:#555">空空如也</span>';
+  div.innerHTML=html;
+  div.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click',e=>{
+      e.stopPropagation();
+      const act=btn.dataset.action, i=parseInt(btn.dataset.idx);
+      if(act==='equip') socket.emit('equip',{idx:i});
+      else if(act==='unequip') socket.emit('unequip',{slot:btn.dataset.slot});
+      else if(act==='use') socket.emit('use',{idx:i});
+      else if(act==='eat') socket.emit('eat',{idx:i});
+      else if(act==='drop') socket.emit('drop',{idx:i});
+    });
+  });
+}
+
+function invRow(idx,it,hk,eqSlot){
+  const isEq=!!eqSlot;
+  let acts='';
+  if(isEq) acts=`<button data-action="unequip" data-slot="${eqSlot}">卸下</button>`;
+  else{
+    if(it.cat==='武器'||it.cat==='护甲'||it.cat==='戒指') acts+=`<button data-action="equip" data-idx="${idx}">装备</button>`;
+    if(it.cat==='药水'||it.cat==='卷轴') acts+=`<button data-action="use" data-idx="${idx}">使用</button>`;
+    if(it.cat==='食物'||it.cat==='尸体') acts+=`<button data-action="eat" data-idx="${idx}">吃掉</button>`;
+    if(it.cat!=='尸体') acts+=`<button data-action="drop" data-idx="${idx}">丢弃</button>`;
+  }
+  const eqTag=isEq?' <span style="color:#FFD700;font-size:0.8em">[已装备]</span>':'';
+  return `<div class="inv-item"><span class="hotkey">${hk}</span><span class="iname">${it.e||'📦'} ${it.n}${eqTag}</span><span class="iactions">${acts}</span></div>`;
+}
+function hotkey(i){ return String.fromCharCode(97+(i%26)); }
+
+// ═══════ UI ═══════
+function updateAllUI(){
+  if(!myData) return;
+  $('st-name').textContent=myData.name;
+  $('st-class').textContent=myData.cls+' Lv'+myData.lvl;
+  const hpPct=myData.maxHp>0?(myData.hp/myData.maxHp*100):0;
+  $('hp-bar').style.width=hpPct+'%';
+  $('st-hp').textContent=`${myData.hp}/${myData.maxHp}`;
+  const xpNeed=myData.lvl*140;
+  $('xp-bar').style.width=((myData.xp||0)/xpNeed*100)+'%';
+  $('st-lvlxp').textContent=`Lv${myData.lvl} (${myData.xp||0}/${xpNeed})`;
+  $('st-strdex').textContent=`${myData.str} / ${myData.dex}`;
+  $('st-gold').textContent=myData.gold||0;
+  $('st-depth').textContent='第'+(myData.depth||1)+'层（击杀:'+(myData.kills||0)+'）';
+
+  $('eq-wpn').textContent=myData.weapon?`${myData.weapon.e||''} ${myData.weapon.n}${myData.weapon.atk?' +'+myData.weapon.atk:''}`:'空手';
+  $('eq-arm').textContent=myData.armor?`${myData.armor.e||''} ${myData.armor.n}${myData.armor.def?' +'+myData.armor.def:''}`:'无';
+  $('eq-ring').textContent=myData.ring?`${myData.ring.e||''} ${myData.ring.n}`:'无';
+
+  updateInventoryUI();
+  updatePlayerList();
+  updateLogUI();
+
+  if(!myData.alive){ deathOverlay.classList.add('show'); setTimeout(()=>deathOverlay.classList.remove('show'),2500); }
+}
+
+function updatePlayerList(){
+  if(!gameState) return;
+  const players=gameState.players||[];
+  $('pl-count').textContent=`(${players.length})`;
+  let html='';
+  for(const p of players){
+    const isMe=p.id===myId;
+    html+=`<div class="pl-row"><div class="pl-dot" style="background:${p.color}"></div><span class="pl-name">${isMe?'▶ ':''}${esc(p.name)}</span><span class="pl-info">Lv${p.lvl} ${p.cls}</span></div>`;
+  }
+  if(!html) html='<span style="color:#555">暂无其他玩家</span>';
+  $('pl-list').innerHTML=html;
+}
+
+function addLog(msg,color){
+  logMessages.push({msg,color,time:Date.now()});
+  if(logMessages.length>MAX_LOG) logMessages.shift();
+  updateLogUI();
+}
+function updateLogUI(){
+  const area=$('log-area');
+  let html='';
+  for(const l of logMessages){
+    const time=new Date(l.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    html+=`<div class="log-msg"${l.color?` style="color:${l.color}"`:''}><span class="time">${time}</span>${l.msg}</div>`;
+  }
+  area.innerHTML=html;
+  area.scrollTop=area.scrollHeight;
+}
+function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+function sendChat(){
+  const msg=chatInput.value.trim();
+  if(msg&&socket){ socket.emit('chat',{msg}); chatInput.value=''; chatInput.blur(); }
+  return false;
+}
+
+// ═══════ 伤害检测 ═══════
+let lastHp=null;
+setInterval(()=>{
+  if(myData&&lastHp!==null&&myData.hp<lastHp) damageFlash=Math.min(1,damageFlash+0.35+(lastHp-myData.hp)*0.04);
+  lastHp=myData?myData.hp:null;
+},250);
+
+// ═══════════════════════════════════
+//  渲染循环 — 战争迷雾核心
+// ═══════════════════════════════════
+function render(){
+  requestAnimationFrame(render);
+  if(!map||!myData) return;
+
+  const w=canvas.width, h=canvas.height;
+  ctx.fillStyle='#000';
+  ctx.fillRect(0,0,w,h);
+
+  // 平滑镜头
+  const px=myData.x*TS+TS/2;
+  const py=myData.y*TS+TS/2;
+  targetCX=px-w/2; targetCY=py-h/2;
+  cameraX+=(targetCX-cameraX)*0.16;
+  cameraY+=(targetCY-cameraY)*0.16;
+
+  const sx=Math.max(0,Math.floor(cameraX/TS)-1);
+  const sy=Math.max(0,Math.floor(cameraY/TS)-1);
+  const ex=Math.min(mapW-1,Math.ceil((cameraX+w)/TS)+1);
+  const ey=Math.min(mapH-1,Math.ceil((cameraY+h)/TS)+1);
+
+  // ── 渲染地图（带战争迷雾） ──
+  for(let y=sy; y<=ey; y++){
+    for(let x=sx; x<=ex; x++){
+      if(!map[y]) continue;
+      const dx=x*TS-cameraX, dy=y*TS-cameraY;
+      const tile=map[y][x];
+      const seen=seenTiles.has(`${x},${y}`);
+      const inSight=myData.alive && Math.abs(x-myData.x)+Math.abs(y-myData.y)<=8;
+
+      if(!seen && !inSight){
+        // 未探索 — 全黑
+        ctx.fillStyle='#050508';
+        ctx.fillRect(dx,dy,TS,TS);
+        continue;
+      }
+
+      if(tile===TILE.WALL){
+        // 墙壁
+        ctx.fillStyle= seen ? '#2a2a38' : '#0a0a14';
+        ctx.fillRect(dx,dy,TS,TS);
+        ctx.fillStyle='#1e1e2a';
+        ctx.fillRect(dx+1,dy+1,TS-2,TS-2);
+        ctx.fillStyle='#3a3a4a';
+        ctx.fillRect(dx+4,dy+4,TS/2-4,2);
+        ctx.fillRect(dx+4,dy+TS/2,TS/2-4,2);
+      } else {
+        // 地板/走廊/门
+        ctx.fillStyle= seen ? '#181820' : '#0c0c14';
+        ctx.fillRect(dx,dy,TS,TS);
+
+        if(tile===TILE.DOOR){
+          // 门 — 金色的门符号
+          ctx.fillStyle='#4a3a1a';
+          ctx.fillRect(dx+TS/2-3,dy+1,6,TS-2);
+          ctx.fillStyle='#DAA520';
+          ctx.font='20px sans-serif';
+          ctx.textAlign='center';
+          ctx.fillText('🚪',dx+TS/2,dy+TS/2+7);
+          ctx.textAlign='start';
+        } else if(tile===TILE.STAIRS_DOWN){
+          ctx.fillStyle='#FFD700';
+          ctx.font='bold 24px sans-serif';
+          ctx.textAlign='center';
+          ctx.fillText('⬇',dx+TS/2,dy+TS/2+8);
+          ctx.textAlign='start';
+        } else if(tile===TILE.STAIRS_UP){
+          ctx.fillStyle='#FFD700';
+          ctx.font='bold 24px sans-serif';
+          ctx.textAlign='center';
+          ctx.fillText('⬆',dx+TS/2,dy+TS/2+8);
+          ctx.textAlign='start';
+        } else if(tile===TILE.FLOOR){
+          // 地板纹理
+          ctx.fillStyle='#1c1c26';
+          ctx.fillRect(dx+TS/2-1,dy+TS/2-1,2,2);
+        }
+      }
+
+      // 不在视野内的已探索区域 — 加暗色遮罩
+      if(seen && !inSight){
+        ctx.fillStyle='rgba(0,0,0,0.45)';
+        ctx.fillRect(dx,dy,TS,TS);
+      }
+    }
+  }
+
+  if(!gameState) return;
+
+  // ── 地面物品（只在视野内显示） ──
+  for(const it of (gameState.items||[])){
+    if(!seenTiles.has(`${it.x},${it.y}`)) continue; // 战争迷雾隐藏
+    const dx=it.x*TS-cameraX, dy=it.y*TS-cameraY;
+    if(dx<-TS||dx>w+TS||dy<-TS||dy>h+TS) continue;
+
+    const shimmer=Math.sin(Date.now()/400+it.x+it.y)*0.25+0.25;
+    if(it.cat==='武器'||it.cat==='护甲'||it.cat==='戒指'){
+      ctx.fillStyle=`rgba(255,215,0,${shimmer})`;
+      ctx.fillRect(dx,dy,TS,TS);
+      ctx.strokeStyle=`rgba(255,215,0,${shimmer*2})`;
+      ctx.lineWidth=1; ctx.strokeRect(dx+1,dy+1,TS-2,TS-2);
+    }
+    ctx.font='20px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(it.e||'📦',dx+TS/2,dy+TS/2+7);
+    ctx.textAlign='start';
+  }
+
+  // ── 怪物（只在视野内显示） ──
+  for(const mon of (gameState.monsters||[])){
+    if(!seenTiles.has(`${mon.x},${mon.y}`)) continue;
+    const dx=mon.x*TS-cameraX, dy=mon.y*TS-cameraY;
+    if(dx<-TS||dx>w+TS||dy<-TS||dy>h+TS) continue;
+
+    ctx.fillStyle='rgba(40,10,10,0.6)';
+    ctx.fillRect(dx+1,dy+1,TS-2,TS-2);
+    ctx.font='22px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(mon.e||'👾',dx+TS/2,dy+TS/2+7);
+    ctx.textAlign='start';
+
+    if(mon.hp<mon.maxHp){
+      const bw=TS-4;
+      ctx.fillStyle='#222';
+      ctx.fillRect(dx+2,dy-5,bw,4);
+      ctx.fillStyle='#F44';
+      ctx.fillRect(dx+2,dy-5,bw*(mon.hp/mon.maxHp),4);
+    }
+    ctx.fillStyle='#ccc';
+    ctx.font='9px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(mon.n,dx+TS/2,dy-8);
+    ctx.textAlign='start';
+  }
+
+  // ── 玩家 ──
+  const players=gameState.players||[];
+  for(const pl of players){
+    const dx=pl.x*TS-cameraX, dy=pl.y*TS-cameraY;
+    if(dx<-TS||dx>w+TS||dy<-TS||dy>h+TS) continue;
+    const isMe=pl.id===myId;
+
+    if(isMe){
+      const pulse=Math.sin(Date.now()/350)*0.3+0.7;
+      ctx.fillStyle=`rgba(255,255,255,${pulse*0.25})`;
+      ctx.fillRect(dx-3,dy-3,TS+6,TS+6);
+    }
+
+    ctx.fillStyle=pl.color||'#FFF';
+    ctx.fillRect(dx+2,dy+2,TS-4,TS-4);
+
+    ctx.fillStyle='#FFF';
+    ctx.font=`bold ${TS-8}px monospace`;
+    ctx.textAlign='center';
+    ctx.fillText('@',dx+TS/2,dy+TS/2+8);
+    ctx.textAlign='start';
+
+    ctx.fillStyle='#FFF';
+    ctx.font='bold 10px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(isMe?'▼ 我':pl.name,dx+TS/2,dy-7);
+    ctx.textAlign='start';
+
+    if(isMe||pl.hp<pl.maxHp){
+      const bw=TS-2;
+      ctx.fillStyle='#222';
+      ctx.fillRect(dx+1,dy-1,bw,3);
+      ctx.fillStyle=isMe?'#0f0':'#F88';
+      ctx.fillRect(dx+1,dy-1,bw*(pl.hp/pl.maxHp),3);
+    }
+  }
+
+  // ── 受伤闪红 ──
+  if(damageFlash>0){
+    ctx.fillStyle=`rgba(255,0,0,${damageFlash*0.3})`;
+    ctx.fillRect(0,0,w,h);
+    damageFlash-=0.02;
+  }
+
+  // ── 死亡遮罩 ──
+  if(myData && !myData.alive){
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='#F00';
+    ctx.font='bold 48px "Microsoft YaHei",sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('💀 你死了',w/2,h/2);
+    ctx.fillStyle='#FFF';
+    ctx.font='16px "Microsoft YaHei",sans-serif';
+    ctx.fillText('等待复活……',w/2,h/2+40);
+    ctx.textAlign='start';
+  }
+}
+
+// ═══════ 启动 ═══════
+render();
+$('name-input').focus();
+console.log('🏰 Pathos 在线 — 九宫格地牢 · 战争迷雾');
+</script>
+</body>
+</html>

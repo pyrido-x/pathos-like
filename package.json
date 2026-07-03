@@ -1,0 +1,19 @@
+{
+  "name": "pathos-online",
+  "version": "2.0.0",
+  "description": "多人回合制 Roguelike 地牢 — 万物皆可吃，和好友一起探险",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "socket.io": "^4.7.5"
+  },
+  "keywords": ["roguelike", "dungeon", "multiplayer", "pathos", "nethack", "chinese"],
+  "license": "MIT"
+}
