@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pathos Online — Multiplayer Roguelike Dungeon</title>
+<style>
+/* ═══════════ RESET & BASE ═══════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Segoe UI','Microsoft YaHei',sans-serif;
+  background:#0a0a12; color:#c8c8d0; overflow:hidden;
+  height:100vh; width:100vw;
+}
+
+/* ═══════════ LOGIN SCREEN ═══════════ */
+#login-overlay{
+  position:fixed; inset:0; z-index:100;
+  background:radial-gradient(ellipse at center,#1a1a2e 0%,#0a0a12 70%);
+  display:flex; align-items:center; justify-content:center;
+}
+.login-box{
+  text-align:center; padding:48px 40px;
+  background:rgba(20,20,40,0.95);
+  border:1px solid #333; border-radius:12px;
+  box-shadow:0 0 60px rgba(100,100,255,0.15);
+  max-width:420px; width:90%;
+}
+.login-box h1{ font-size:2.2em; color:#FFD700; margin-bottom:4px; letter-spacing:2px; }
+.login-box .sub{ color:#888; font-size:0.85em; margin-bottom:28px; }
+.login-box input,.login-box select{
+  display:block; width:100%; padding:12px 16px; margin-bottom:12px;
+  background:#1a1a2e; color:#eee; border:1px solid #444; border-radius:6px;
+  font-size:1em; outline:none; transition:border-color .2s;
+}
+.login-box input:focus,.login-box select:focus{ border-color:#FFD700; }
+.login-box select option{ background:#1a1a2e; color:#eee; }
+.login-box button{
+  width:100%; padding:14px; margin-top:8px;
+  background:linear-gradient(135deg,#FFD700,#FF8C00);
+  color:#1a1a2e; border:none; border-radius:6px; font-size:1.1em;
+  font-weight:bold; cursor:pointer; letter-spacing:1px;
+  transition:transform .1s,box-shadow .2s;
+}
+.login-box button:hover{ transform:scale(1.02); box-shadow:0 0 20px rgba(255,215,0,0.4); }
+.login-box button:active{ transform:scale(0.98); }
+.class-cards{ display:flex; gap:8px; margin-bottom:14px; }
+.class-card{
+  flex:1; padding:12px 8px; border-radius:8px; cursor:pointer;
+  border:2px solid transparent; text-align:center; transition:all .2s;
+  background:rgba(255,255,255,0.03); font-size:0.85em;
+}
+.class-card:hover{ background:rgba(255,255,255,0.06); }
+.class-card.selected{ border-color:#FFD700; background:rgba(255,215,0,0.1); }
+.class-card .icon{ font-size:2em; display:block; margin-bottom:4px; }
+.class-card .cn{ font-weight:bold; color:#eee; }
+.class-card .cd{ font-size:0.75em; color:#888; margin-top:2px; }
+
+/* ═══════════ GAME LAYOUT ═══════════ */
+#game{ display:none; height:100vh; width:100vw; }
+#game-area{ flex:1; position:relative; min-width:0; }
+#game-area canvas{ display:block; width:100%; height:100%; image-rendering:pixelated; }
+
+#sidebar{
+  width:280px; background:#111122; border-left:1px solid #2a2a3a;
+  display:flex; flex-direction:column; overflow-y:auto; font-size:0.82em;
+  padding:0; flex-shrink:0;
+}
+
+#game-layout{ display:flex; height:100%; }
+
+/* ─── Sidebar sections ─── */
+.side-section{ padding:10px 14px; border-bottom:1px solid #1a1a2e; }
+.side-section h3{ color:#FFD700; font-size:0.85em; margin-bottom:6px; letter-spacing:1px; text-transform:uppercase; }
+
+/* Stats */
+.stat-row{ display:flex; justify-content:space-between; padding:2px 0; }
+.stat-row .lbl{ color:#888; }
+.stat-row .val{ color:#eee; font-weight:bold; }
+.hp-bar-bg{ background:#333; height:8px; border-radius:4px; margin:6px 0; overflow:hidden; }
+.hp-bar-fg{ background:linear-gradient(90deg,#FF4444,#FF6666); height:100%; border-radius:4px; transition:width .3s; }
+.xp-bar-bg{ background:#333; height:5px; border-radius:3px; margin:4px 0; overflow:hidden; }
+.xp-bar-fg{ background:linear-gradient(90deg,#4488FF,#66AAFF); height:100%; border-radius:3px; transition:width .3s; }
+
+/* Equipment */
+.eq-slot{ display:flex; justify-content:space-between; padding:2px 0; font-size:0.8em; }
+.eq-slot .slot{ color:#888; }
+.eq-slot .eq-item{ color:#FFD700; }
+
+/* Inventory */
+.inv-item{
+  padding:3px 6px; cursor:pointer; border-radius:3px; display:flex;
+  justify-content:space-between; transition:background .15s;
+}
+.inv-item:hover{ background:rgba(255,255,255,0.05); }
+.inv-item .hotkey{ color:#FFD700; margin-right:8px; font-weight:bold; min-width:20px; }
+.inv-item .iname{ flex:1; }
+.inv-item .iactions{ display:flex; gap:4px; }
+.inv-item .iactions button{
+  background:#2a2a3a; color:#aaa; border:1px solid #444; border-radius:3px;
+  padding:1px 6px; font-size:0.7em; cursor:pointer; transition:all .15s;
+}
+.inv-item .iactions button:hover{ background:#444; color:#fff; }
+
+/* Players list */
+.pl-row{ padding:3px 0; display:flex; align-items:center; gap:6px; font-size:0.82em; }
+.pl-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.pl-name{ flex:1; color:#ddd; }
+.pl-info{ color:#888; font-size:0.8em; }
+
+/* Log / Chat */
+#log-area{ flex:1; overflow-y:auto; padding:8px 14px; min-height:120px; max-height:200px; }
+.log-msg{ padding:2px 0; font-size:0.78em; word-break:break-word; }
+.log-msg .time{ color:#555; margin-right:6px; }
+.chat-msg .author{ font-weight:bold; margin-right:4px; }
+#chat-form{ display:flex; padding:8px 14px; gap:6px; border-top:1px solid #1a1a2e; }
+#chat-input{
+  flex:1; padding:8px 12px; background:#1a1a2e; color:#eee;
+  border:1px solid #444; border-radius:4px; font-size:0.85em; outline:none;
+}
+#chat-input:focus{ border-color:#FFD700; }
+#chat-send{ padding:8px 14px; background:#2a2a3a; color:#FFD700; border:1px solid #444; border-radius:4px; cursor:pointer; }
+#chat-send:hover{ background:#3a3a4a; }
+
+/* Death overlay */
+#death-overlay{
+  position:fixed; inset:0; z-index:50; pointer-events:none;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; transition:opacity .3s;
+}
+#death-overlay.show{ opacity:1; }
+#death-overlay .msg{
+  font-size:3em; color:#FF0000; font-weight:bold; letter-spacing:3px;
+  text-shadow:0 0 30px rgba(255,0,0,0.6);
+  animation:pulse 0.8s ease-in-out;
+}
+@keyframes pulse{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+
+/* Help bar */
+#help-bar{
+  position:fixed; bottom:4px; left:50%; transform:translateX(-50%);
+  background:rgba(10,10,18,0.9); padding:4px 16px; border-radius:6px;
+  font-size:0.7em; color:#555; letter-spacing:1px; z-index:10;
+}
+#help-bar span{ color:#FFD700; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ LOGIN ═══════════ -->
+<div id="login-overlay">
+<div class="login-box">
+  <h1>🏰 Pathos Online</h1>
+  <p class="sub">Multiplayer Roguelike Dungeon · Eat Anything · Explore Together</p>
+  <input id="name-input" placeholder="Enter your name..." maxlength="16" autofocus>
+  <div class="class-cards" id="class-cards">
+    <div class="class-card selected" data-class="warrior">
+      <span class="icon">⚔️</span><span class="cn">Warrior</span>
+      <span class="cd">HP:35 STR:16</span>
+    </div>
+    <div class="class-card" data-class="wizard">
+      <span class="icon">🧙</span><span class="cn">Wizard</span>
+      <span class="cd">HP:20 STR:8</span>
+    </div>
+    <div class="class-card" data-class="rogue">
+      <span class="icon">🗡️</span><span class="cn">Rogue</span>
+      <span class="cd">HP:25 DEX:17</span>
+    </div>
+  </div>
+  <button id="join-btn">⚡ Enter the Dungeon</button>
+</div>
+</div>
+
+<!-- ═══════════ GAME ═══════════ -->
+<div id="game">
+<div id="game-layout">
+  <div id="game-area"><canvas id="canvas"></canvas></div>
+  <div id="sidebar">
+    <div class="side-section">
+      <h3>🧑 Character</h3>
+      <div class="stat-row"><span class="lbl">Name</span><span class="val" id="st-name">—</span></div>
+      <div class="stat-row"><span class="lbl">Class</span><span class="val" id="st-class">—</span></div>
+      <div class="hp-bar-bg"><div class="hp-bar-fg" id="hp-bar" style="width:100%"></div></div>
+      <div class="stat-row"><span class="lbl">HP</span><span class="val" id="st-hp">—</span></div>
+      <div class="xp-bar-bg"><div class="xp-bar-fg" id="xp-bar" style="width:0%"></div></div>
+      <div class="stat-row"><span class="lbl">Level</span><span class="val" id="st-lvl">1</span></div>
+      <div class="stat-row"><span class="lbl">XP</span><span class="val" id="st-xp">0</span></div>
+      <div class="stat-row"><span class="lbl">STR / DEX</span><span class="val" id="st-strdex">—</span></div>
+      <div class="stat-row"><span class="lbl">Gold</span><span class="val" id="st-gold">0</span></div>
+      <div class="stat-row"><span class="lbl">Depth</span><span class="val" id="st-depth">1</span></div>
+    </div>
+
+    <div class="side-section">
+      <h3>⚔ Equipment</h3>
+      <div class="eq-slot"><span class="slot">⚔ Weapon</span><span class="eq-item" id="eq-wpn">Fists</span></div>
+      <div class="eq-slot"><span class="slot">🛡 Armor</span><span class="eq-item" id="eq-arm">None</span></div>
+      <div class="eq-slot"><span class="slot">💍 Ring</span><span class="eq-item" id="eq-ring">None</span></div>
+    </div>
+
+    <div class="side-section">
+      <h3>🎒 Inventory <span style="color:#888;font-weight:normal">[I]</span></h3>
+      <div id="inv-list"><span style="color:#555">Press I to toggle</span></div>
+    </div>
+
+    <div class="side-section">
+      <h3>👥 Players <span id="pl-count" style="color:#888;font-weight:normal">(0)</span></h3>
+      <div id="pl-list"></div>
+    </div>
+
+    <div id="log-area"></div>
+
+    <form id="chat-form" onsubmit="return sendChat()">
+      <input id="chat-input" placeholder="Chat... (Enter)" maxlength="200">
+      <button type="submit" id="chat-send">Send</button>
+    </form>
+  </div>
+</div>
+</div>
+
+<div id="death-overlay"><div class="msg">💀 YOU DIED</div></div>
+<div id="help-bar">
+  <span>Arrows/WASD/hjkl</span> Move ·
+  <span>G</span> Pickup ·
+  <span>E</span> Eat ·
+  <span>I</span> Inventory ·
+  <span>&gt;</span> Down ·
+  <span>&lt;</span> Up ·
+  <span>Enter</span> Chat
+</div>
+
+<!-- ═══════════ SCRIPTS ═══════════ -->
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ═══════════ CONSTANTS ═══════════
+const TILE = { WALL:0, FLOOR:1, STAIRS_UP:2, STAIRS_DOWN:3 };
+const TS = 20;  // tile size in pixels
+
+// ═══════════ DOM REFS ═══════════
+const $ = id => document.getElementById(id);
+const loginOverlay = $('login-overlay');
+const gameDiv = $('game');
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+const deathOverlay = $('death-overlay');
+const chatInput = $('chat-input');
+
+// ═══════════ STATE ═══════════
+let socket, myId, myData, currentLevel=1;
+let map = null, mapW=80, mapH=50;
+let gameState = null;
+let cameraX=0, cameraY=0, targetCX=0, targetCY=0;
+let damageFlash=0;
+let logMessages=[];
+const MAX_LOG=80;
+let selectedClass='warrior';
+
+// ═══════════ LOGIN ═══════════
+document.querySelectorAll('.class-card').forEach(card=>{
+  card.addEventListener('click',()=>{
+    document.querySelectorAll('.class-card').forEach(c=>c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedClass=card.dataset.class;
+  });
+});
+
+$('name-input').addEventListener('keydown',e=>{ if(e.key==='Enter') joinGame(); });
+$('join-btn').addEventListener('click',joinGame);
+
+function joinGame(){
+  const name = $('name-input').value.trim() || 'Adventurer';
+  loginOverlay.style.display='none';
+  gameDiv.style.display='block';
+  initCanvas();
+  connectSocket(name, selectedClass);
+}
+
+// ═══════════ CANVAS ═══════════
+function initCanvas(){
+  const area = $('game-area');
+  canvas.width = area.clientWidth;
+  canvas.height = area.clientHeight;
+  window.addEventListener('resize',()=>{
+    const a=$('game-area');
+    canvas.width=a.clientWidth;
+    canvas.height=a.clientHeight;
+  });
+}
+
+// ═══════════ SOCKET ═══════════
+function connectSocket(name, cls){
+  socket = io();
+  myData = null;
+  gameState = null;
+
+  socket.on('connect',()=>{
+    socket.emit('join',{name,class:cls});
+    addLog('Connected to dungeon server...','#0f0');
+  });
+
+  socket.on('welcome', data=>{
+    myId = data.you.id;
+    myData = data.you;
+    currentLevel = data.level;
+    map = data.map;
+    mapW = map[0].length; mapH = map.length;
+    gameState = { players:[], monsters:[], items:[], level:data.level };
+    updateAllUI();
+    addLog(`Welcome, ${data.you.name}! You are at dungeon level ${data.level}.`,'#FFD700');
+  });
+
+  socket.on('newLevel', data=>{
+    map = data.map;
+    currentLevel = data.level;
+    mapW = map[0].length; mapH = map.length;
+    addLog(`Entering dungeon level ${data.level}...`,'#FFD700');
+  });
+
+  socket.on('gameState', state=>{
+    gameState = state;
+    // Update myData from server state
+    const me = state.players.find(p=>p.id===myId);
+    if(me){
+      myData.hp=me.hp; myData.maxHp=me.maxHp;
+      myData.lvl=me.lvl; myData.str=me.str; myData.dex=me.dex;
+      myData.gold=me.gold; myData.x=me.x; myData.y=me.y;
+      myData.alive=me.alive; myData.depth=me.depth; myData.kills=me.kills;
+    }
+    currentLevel = state.level;
+    updateAllUI();
+  });
+
+  socket.on('syncPlayer', data=>{
+    myData = data;
+    updateAllUI();
+  });
+
+  socket.on('log', data=>{
+    if (data.global && data.msg) addLog(data.msg, '#aaa');
+    else if (!data.global && data.msg) addLog(data.msg, '#ddd');
+  });
+
+  socket.on('chat', data=>{
+    addLog(`<span class="chat-msg"><span class="author" style="color:${data.color}">${data.from}:</span> ${esc(data.msg)}</span>`, null);
+  });
+
+  socket.on('disconnect',()=>{
+    addLog('⚠ Disconnected from server. Refresh to reconnect.','#f44');
+  });
+}
+
+// ═══════════ INPUT ═══════════
+const keyMap = {
+  ArrowUp:{dx:0,dy:-1}, ArrowDown:{dx:0,dy:1}, ArrowLeft:{dx:-1,dy:0}, ArrowRight:{dx:1,dy:0},
+  w:{dx:0,dy:-1}, s:{dx:0,dy:1}, a:{dx:-1,dy:0}, d:{dx:1,dy:0},
+  k:{dx:0,dy:-1}, j:{dx:0,dy:1}, h:{dx:-1,dy:0}, l:{dx:1,dy:0},
+};
+
+document.addEventListener('keydown',e=>{
+  if (!socket || !myData) return;
+  // Skip if typing in chat
+  if (document.activeElement === chatInput) {
+    if (e.key==='Escape') chatInput.blur();
+    return;
+  }
+
+  const k = e.key;
+  const move = keyMap[k];
+  if (move) { e.preventDefault(); socket.emit('move',move); return; }
+
+  switch(k){
+    case 'g': case 'G': case ',': e.preventDefault(); socket.emit('pickup'); break;
+    case 'e': case 'E': e.preventDefault(); socket.emit('eat',{}); break;
+    case 'i': case 'I': e.preventDefault(); toggleInventory(); break;
+    case '>': case '.': e.preventDefault(); socket.emit('descend'); break;
+    case '<': e.preventDefault(); socket.emit('ascend'); break;
+    case 'Enter': e.preventDefault(); chatInput.focus(); break;
+    case 'Escape': e.preventDefault(); hideInventory(); break;
+  }
+});
+
+// ═══════════ INVENTORY ═══════════
+let showInv = false;
+function toggleInventory(){ showInv=!showInv; updateInventoryUI(); }
+function hideInventory(){ showInv=false; updateInventoryUI(); }
+
+function updateInventoryUI(){
+  const div = $('inv-list');
+  if (!myData || !showInv) { div.innerHTML='<span style="color:#555">Press I to toggle</span>'; return; }
+
+  let html = '';
+  let idx = 0;
+
+  // Equipment with unequip
+  if (myData.weapon) { html+=invRow(idx,myData.weapon,'⚔',true); idx++; }
+  if (myData.armor)  { html+=invRow(idx,myData.armor,'🛡',true); idx++; }
+  if (myData.ring)   { html+=invRow(idx,myData.ring,'💍',true); idx++; }
+
+  // Inventory
+  if (myData.inv && myData.inv.length) {
+    for (const it of myData.inv) {
+      html += invRow(idx, it, hotkey(idx), false);
+      idx++;
+    }
+  }
+  if (!html) html = '<span style="color:#555">Empty</span>';
+  div.innerHTML = html;
+
+  // Click handlers
+  div.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click',e=>{
+      e.stopPropagation();
+      const act=btn.dataset.action, i=parseInt(btn.dataset.idx);
+      if(act==='equip') socket.emit('equip',{idx:i});
+      else if(act==='unequip') socket.emit('unequip',{slot:btn.dataset.slot});
+      else if(act==='use') socket.emit('use',{idx:i});
+      else if(act==='eat') socket.emit('eat',{idx:i});
+      else if(act==='drop') socket.emit('drop',{idx:i});
+    });
+  });
+}
+
+function invRow(idx, it, hk, equipped){
+  const catIcon = {WEAPON:'⚔',ARMOR:'🛡',POTION:'🧪',SCROLL:'📜',FOOD:'🍖',RING:'💍',CORPSE:'🦴'};
+  const icon = catIcon[it.cat]||'📦';
+  let acts='';
+  if(equipped){
+    const slot = it.cat==='WEAPON'?'weapon':it.cat==='ARMOR'?'armor':'ring';
+    acts=`<button data-action="unequip" data-slot="${slot}">✕</button>`;
+  }else{
+    if(it.cat==='WEAPON'||it.cat==='ARMOR'||it.cat==='RING') acts+=`<button data-action="equip" data-idx="${idx}">Equip</button>`;
+    if(it.cat==='POTION'||it.cat==='SCROLL') acts+=`<button data-action="use" data-idx="${idx}">Use</button>`;
+    if(it.cat==='FOOD'||it.cat==='CORPSE') acts+=`<button data-action="eat" data-idx="${idx}">Eat</button>`;
+    if(it.cat!=='CORPSE') acts+=`<button data-action="drop" data-idx="${idx}">Drop</button>`;
+  }
+  return `<div class="inv-item">
+    <span class="hotkey">${hk}</span>
+    <span class="iname" style="color:${it.col||'#fff'}">${icon} ${it.n}${equipped?' <span style="color:#FFD700;font-size:0.8em">[eq]</span>':''}</span>
+    <span class="iactions">${acts}</span>
+  </div>`;
+}
+
+function hotkey(i){ return String.fromCharCode(97+(i%26)); }
+
+// ═══════════ UI UPDATES ═══════════
+function updateAllUI(){
+  if (!myData) return;
+  $('st-name').textContent = myData.name;
+  $('st-class').textContent = `Lv${myData.lvl} ${myData.cls}`;
+  const hpPct = myData.maxHp>0 ? (myData.hp/myData.maxHp*100) : 0;
+  $('hp-bar').style.width = hpPct+'%';
+  $('st-hp').textContent = `${myData.hp}/${myData.maxHp}`;
+  const xpNeed = myData.lvl*120;
+  $('xp-bar').style.width = ((myData.xp||0)/xpNeed*100)+'%';
+  $('st-lvl').textContent = myData.lvl;
+  $('st-xp').textContent = `${myData.xp||0}/${xpNeed}`;
+  $('st-strdex').textContent = `${myData.str} / ${myData.dex}`;
+  $('st-gold').textContent = myData.gold||0;
+  $('st-depth').textContent = myData.depth||1;
+
+  $('eq-wpn').textContent = myData.weapon ? `${myData.weapon.n} ${myData.weapon.atk?'+'+myData.weapon.atk:''}` : 'Fists';
+  $('eq-arm').textContent = myData.armor ? `${myData.armor.n} ${myData.armor.def?'+'+myData.armor.def:''}` : 'None';
+  $('eq-ring').textContent = myData.ring ? myData.ring.n : 'None';
+
+  updateInventoryUI();
+  updatePlayerList();
+  updateLogUI();
+
+  // Death overlay
+  if (!myData.alive) {
+    deathOverlay.classList.add('show');
+    setTimeout(()=>deathOverlay.classList.remove('show'),2500);
+  }
+}
+
+function updatePlayerList(){
+  if (!gameState) return;
+  const players = gameState.players||[];
+  $('pl-count').textContent = `(${players.length})`;
+  let html='';
+  for(const p of players){
+    const isMe = p.id===myId;
+    html+=`<div class="pl-row">
+      <div class="pl-dot" style="background:${p.color}"></div>
+      <span class="pl-name">${isMe?'▶ ':''}${esc(p.name)}</span>
+      <span class="pl-info">Lv${p.lvl} ${p.cls}</span>
+    </div>`;
+  }
+  if(!html) html='<span style="color:#555">No other players</span>';
+  $('pl-list').innerHTML = html;
+}
+
+function addLog(msg, color){
+  logMessages.push({msg,color,time:Date.now()});
+  if(logMessages.length>MAX_LOG) logMessages.shift();
+  updateLogUI();
+}
+
+function updateLogUI(){
+  const area = $('log-area');
+  let html='';
+  for(const l of logMessages){
+    const time = new Date(l.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    html+=`<div class="log-msg"${l.color?` style="color:${l.color}"`:''}><span class="time">${time}</span>${l.msg}</div>`;
+  }
+  area.innerHTML = html;
+  area.scrollTop = area.scrollHeight;
+}
+
+function esc(s){ const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
+
+// ═══════════ CHAT ═══════════
+function sendChat(){
+  const msg = chatInput.value.trim();
+  if(msg && socket){ socket.emit('chat',{msg}); chatInput.value=''; chatInput.blur(); }
+  return false;
+}
+
+// ═══════════ RENDER LOOP ═══════════
+function render(){
+  requestAnimationFrame(render);
+  if (!map || !myData) return;
+
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0,0,w,h);
+
+  // Smooth camera
+  const px = myData.x * TS + TS/2;
+  const py = myData.y * TS + TS/2;
+  targetCX = px - w/2;
+  targetCY = py - h/2;
+  cameraX += (targetCX - cameraX) * 0.18;
+  cameraY += (targetCY - cameraY) * 0.18;
+
+  // Visible tile range
+  const sx = Math.max(0, Math.floor(cameraX/TS) - 1);
+  const sy = Math.max(0, Math.floor(cameraY/TS) - 1);
+  const ex = Math.min(mapW-1, Math.ceil((cameraX+w)/TS) + 1);
+  const ey = Math.min(mapH-1, Math.ceil((cameraY+h)/TS) + 1);
+
+  // ── Draw tiles ──
+  for(let y=sy; y<=ey; y++){
+    for(let x=sx; x<=ex; x++){
+      if(!map[y]) continue;
+      const dx = x*TS - cameraX;
+      const dy = y*TS - cameraY;
+      const tile = map[y][x];
+
+      if(tile===TILE.WALL){
+        ctx.fillStyle='#3a3a4a';
+        ctx.fillRect(dx,dy,TS,TS);
+        ctx.fillStyle='#666';
+        ctx.font='bold 15px monospace';
+        ctx.fillText('#',dx+4,dy+TS-4);
+      } else {
+        ctx.fillStyle='#1a1a24';
+        ctx.fillRect(dx,dy,TS,TS);
+        // Floor detail
+        ctx.fillStyle='#222';
+        ctx.fillRect(dx+TS/2,dy+TS/2,1,1);
+
+        if(tile===TILE.STAIRS_DOWN){
+          ctx.fillStyle='#FFD700';
+          ctx.font='bold 18px monospace';
+          ctx.fillText('>',dx+4,dy+TS-3);
+        } else if(tile===TILE.STAIRS_UP){
+          ctx.fillStyle='#FFD700';
+          ctx.font='bold 18px monospace';
+          ctx.fillText('<',dx+4,dy+TS-3);
+        }
+      }
+    }
+  }
+
+  if (!gameState) return;
+
+  // ── Draw items ──
+  for(const it of (gameState.items||[])){
+    const dx = it.x*TS - cameraX, dy = it.y*TS - cameraY;
+    if(dx<-TS||dx>w+TS||dy<-TS||dy>h+TS) continue;
+    ctx.fillStyle = it.col || '#FFF';
+    ctx.font = '13px monospace';
+    ctx.fillText(it.c||'?', dx+3, dy+TS-5);
+    // Sparkle for rare items
+    if(['WEAPON','ARMOR','RING'].includes(it.cat)){
+      const shimmer = Math.sin(Date.now()/300 + it.x + it.y) * 0.5 + 0.5;
+      ctx.fillStyle = `rgba(255,255,200,${shimmer*0.3})`;
+      ctx.fillRect(dx,dy,TS,TS);
+    }
+  }
+
+  // ── Draw monsters ──
+  for(const mon of (gameState.monsters||[])){
+    const dx = mon.x*TS - cameraX, dy = mon.y*TS - cameraY;
+    if(dx<-TS||dx>w+TS||dy<-TS||dy>h+TS) continue;
+    // Body
+    ctx.fillStyle = mon.col || '#F44';
+    ctx.fillRect(dx+1, dy+1, TS-2, TS-2);
+    // HP bar
+    if(mon.hp < mon.maxHp){
+      const barW = TS-4;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(dx+2, dy-4, barW, 3);
+      ctx.fillStyle = '#F44';
+      ctx.fillRect(dx+2, dy-4, barW*(mon.hp/mon.maxHp), 3);
+    }
+    // Character
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(mon.c||'?', dx+5, dy+TS-5);
+  }
+
+  // ── Draw players ──
+  const players = gameState.players||[];
+  for(const pl of players){
+    const dx = pl.x*TS - cameraX, dy = pl.y*TS - cameraY;
+    if(dx<-TS||dx>w+TS||dy<-TS||dy>h+TS) continue;
+    const isMe = pl.id === myId;
+
+    // Body glow
+    if(isMe){
+      const pulse = Math.sin(Date.now()/400)*0.3+0.7;
+      ctx.fillStyle = `rgba(255,255,255,${pulse*0.2})`;
+      ctx.fillRect(dx-2,dy-2,TS+4,TS+4);
+    }
+
+    // Body
+    ctx.fillStyle = pl.color || '#FFF';
+    ctx.fillRect(dx+1,dy+1,TS-2,TS-2);
+
+    // @ symbol
+    ctx.fillStyle = '#FFF';
+    ctx.font = `bold ${TS-4}px monospace`;
+    ctx.fillText('@', dx+3, dy+TS-5);
+
+    // Name tag
+    ctx.fillStyle = '#FFF';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText(isMe?'▶ YOU':pl.name, dx+TS/2, dy-6);
+    ctx.textAlign='start';
+
+    // HP bar for self and damaged players
+    if(isMe || pl.hp < pl.maxHp){
+      const bw=TS-2;
+      ctx.fillStyle='#333';
+      ctx.fillRect(dx+1,dy-2,bw,2);
+      ctx.fillStyle=isMe?'#0f0':'#F44';
+      ctx.fillRect(dx+1,dy-2,bw*(pl.hp/pl.maxHp),2);
+    }
+  }
+
+  // ── Damage flash ──
+  if(damageFlash>0){
+    ctx.fillStyle=`rgba(255,0,0,${damageFlash*0.25})`;
+    ctx.fillRect(0,0,w,h);
+    damageFlash-=0.03;
+  }
+}
+
+// Track HP changes to trigger damage flash
+let lastHp = null;
+setInterval(()=>{
+  if(myData && lastHp!==null && myData.hp < lastHp){
+    damageFlash = Math.min(1, damageFlash + 0.4 + (lastHp-myData.hp)*0.05);
+  }
+  lastHp = myData ? myData.hp : null;
+}, 200);
+
+// ═══════════ STARTUP ═══════════
+render();
+$('name-input').focus();
+
+console.log('🏰 Pathos Online client ready.');
+console.log('Controls: Arrows/WASD/hjkl = Move | G = Pickup | E = Eat | I = Inventory | >/< = Stairs | Enter = Chat');
+</script>
+</body>
+</html>
